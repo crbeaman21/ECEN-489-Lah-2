@@ -1,0 +1,114 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Given parameters
+dnl_values = [0, -0.5, 0, 0.5, -1, 0.5, 0.5, 0]  # DNL values in LSB
+offset_error = 0.5  # LSB
+full_scale_error = 0.5  # LSB
+bits = 3  # 3-bit ADC
+
+# Calculate INL values
+inl_values = [0]  # INL[0] = 0 by definition
+for i in range(1, 2**bits):
+    inl_values.append(inl_values[i-1] + dnl_values[i])
+
+print("INL values:", inl_values)
+
+# Calculate code widths
+ideal_width = 1.0  # 1 LSB
+code_widths = [ideal_width + dnl for dnl in dnl_values]
+
+# Calculate actual transition points using code widths
+transitions = [offset_error]  # First transition with offset error
+for i in range(2**bits - 1):
+    transitions.append(transitions[-1] + code_widths[i])
+
+# Calculate ideal transition points
+ideal_transitions = [i for i in range(2**bits)]
+
+# Calculate input values for visualization
+input_range = np.linspace(-0.5, 2**bits + 0.5, 1000)
+
+# Function to convert input value to output code
+def adc_response(input_val, transition_points):
+    for i in range(len(transition_points)):
+        if input_val < transition_points[i]:
+            return i - 1
+    return len(transition_points) - 1
+
+# Calculate ADC response for each input value
+adc_output = [adc_response(x, transitions) for x in input_range]
+
+# Create figure with 2 subplots
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
+
+# Plot 1: Transfer curve
+ax1.step(input_range, adc_output, 'b-', where='post', label='Actual Transfer Curve')
+ax1.set_title('3-bit ADC Transfer Curve')
+ax1.set_xlabel('Input Voltage (LSB)')
+ax1.set_ylabel('Digital Output Code')
+ax1.set_xlim(-0.5, 2**bits - 0.5)
+ax1.set_ylim(-0.5, 2**bits - 0.5)
+ax1.grid(True)
+
+# Plot ideal transfer curve (staircase)
+ideal_input = np.linspace(-0.5, 2**bits - 0.5, 1000)
+ideal_output = [int(np.floor(x)) if x >= 0 else -1 for x in ideal_input]
+ax1.step(ideal_input, ideal_output, 'r--', where='post', alpha=0.7, label='Ideal Transfer Curve')
+
+# Add transition points for clarity
+for i, t in enumerate(transitions):
+    if i > 0:  # Skip the first transition (which is below code 0)
+        ax1.axvline(x=t, color='g', linestyle=':', alpha=0.5)
+        ax1.text(t+0.05, i-0.2, f'{t:.2f}', fontsize=8)
+
+ax1.legend()
+
+# Plot 2: Combined DNL and INL values
+bar_width = 0.35
+index = np.arange(2**bits)
+
+# Create positions for the bars
+ax2.bar(index - bar_width/2, dnl_values, bar_width, alpha=0.7, label='DNL', color='blue')
+ax2.bar(index + bar_width/2, inl_values, bar_width, alpha=0.7, label='INL', color='red')
+
+ax2.set_title('DNL and INL values')
+ax2.set_ylabel('Error (LSB)')
+ax2.set_xticks(index)
+
+# Create simpler x-labels to avoid overlap
+ax2.set_xticklabels([str(i) for i in range(2**bits)])
+# Add a second x-axis with binary labels below the first
+ax2_2 = ax2.twiny()
+ax2_2.set_xlim(ax2.get_xlim())
+ax2_2.set_xticks(index)
+ax2_2.set_xticklabels([f'({i:03b})' for i in range(2**bits)])
+# Move this axis to the bottom
+ax2_2.spines['top'].set_visible(False)
+ax2_2.spines['bottom'].set_position(('outward', 36))
+ax2_2.xaxis.set_ticks_position('bottom')
+ax2_2.xaxis.set_label_position('bottom')
+ax2_2.set_xlabel('Binary Code')
+
+# Add main x-axis label
+ax2.set_xlabel('Decimal Code')
+
+ax2.axhline(y=0, color='k', linestyle='-', alpha=0.3)
+ax2.grid(True)
+ax2.legend()
+
+# Provide details in text
+text_info = f"""
+ADC Parameters:
+- 3-bit ADC (8 codes: 0-7)
+- Offset Error: +{offset_error} LSB
+- Full Scale Error: +{full_scale_error} LSB
+- DNL values: {dnl_values}
+- INL values: {[round(inl, 2) for inl in inl_values]}
+- Max |DNL|: {max(abs(dnl) for dnl in dnl_values)} LSB
+- Max |INL|: {max(abs(inl) for inl in inl_values)} LSB
+"""
+plt.figtext(0.5, 0.01, text_info, ha='center', bbox={'facecolor':'white', 'alpha':0.8, 'pad':5})
+
+plt.tight_layout(rect=[0, 0.08, 1, 0.98])
+plt.show()
